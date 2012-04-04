@@ -1,0 +1,186 @@
+class Particle
+	# position, color, velocity
+	(@x, @y, @color, @vx, @vy) ->
+		@ttl = 200 # survives this number of frames
+
+class Emitter
+	(@x, @y, @color, @vx, @vy) ->
+
+class Fader
+	(@x,@y, @colors) ->
+		@ex = @x + 50
+		@ey = @y + 50
+		@level = {}
+		@level[c] = 0 for c of @colors
+
+class Ring
+	(@x, @y, @color, @radius) ->
+		@radius2 = radius ** 2
+
+class Splitter
+	(@x, @y) ->
+
+class Warp
+	(@ax, @ay, @bx, @by) ->
+
+class Control
+	(@x, @y, @radius, @control) ->
+		@radius2 = radius ** 2
+	resize: (@radius) -> @radius2 = radius ** 2
+
+# globals
+particles = []
+emitters = []
+faders = []
+rings = []
+portals = []
+controls = []
+
+tick = ->
+	# update particles
+	new_particles = []
+	for p of particles
+		controlled = false
+		# move
+		p.x += p.vx
+		p.y += p.vy
+		p.ttl -= 1
+		# if not dead and still in range
+		if p.ttl > 0 and ( -500 < p.x < 1000 ) and ( -500 < p.y < 1000 ) 
+			for f of faders
+				# if right color and intersecting
+				if f.level[p.color]? and ( f.x < p.x < f.ex ) and ( f.y < p.y < f.ey )
+					f.level[p.color] += 1
+
+			# add effects
+			for c of controls
+				# cache dx and dy to avoid extra subtraction ( worth it? maybe )
+				dx = p.x - c.x
+				dy = p.y - c.y
+				if ( dx*dx + dy*dy ) < c.radius2
+					controlled = true
+					c.control p
+
+			# TODO warp and ring
+			
+			# add friction
+			p.vx *= 0.9
+			p.vy *= 0.9
+			
+			# if still 'active', i.e. controlled or has velocity
+			# TODO better logic
+			if controlled or Math.abs(p.vx) > 1 or Math.abs(p.vy) > 1
+				new_particles.push p # retain for next frame
+
+	# reduce inactive collectors
+	# TODO better logic
+	f.level[c] > 0 and f.level[c] -= 10 for c of f.colors for f of faders
+
+	# make new particles
+	for e of emitters
+		new_particles.push new Particle do
+			e.x + Math.random! * 20 - 10
+			e.y + Math.random! * 20 - 10
+			e.color
+			e.vx
+			e.vy
+		new_particles.push new Particle do
+			e.x + Math.random! * 20 - 10
+			e.y + Math.random! * 20 - 10
+			e.color
+			e.vx
+			e.vy
+
+	# switch to new particle list
+	particles := new_particles
+
+	# TODO handle level win
+	
+	draw!
+
+canvas = document.getElementById \canvas
+ctx = canvas.getContext \2d
+draw = ->
+	ctx.fillStyle = \black
+	ctx.fillRect 0 0 500 500
+	for p of particles
+		ctx.fillStyle = p.color
+		ctx.fillRect p.x, p.y, 2 2
+
+	# TODO extract this to separate canvas
+	# since they don't move per frame, only on interaction
+	for c of controls
+		ctx.strokeStyle = \white
+		ctx.beginPath!
+		ctx.arc c.x, c.y, c.radius, 0 360
+		ctx.stroke!
+
+	for f of faders
+		ctx.strokeStyle = f.colors.0
+		ctx.strokeRect f.x, f.y, 50, 50
+		ctx.fillSTyle = f.colors.0
+		ctx.fillText f.level.white, f.x, f.y + 50
+
+# load level
+emitters.push new Emitter 100 100 \white 5 20
+
+# TODO I think that auditorium's controls
+# actually impart jerk?
+# so particles that are in the field longer 
+# gain more and more velocity each time
+controls.push new Control 150 300 25 ->
+	it.vx += 5 if it.vx < 100
+
+# gravity
+controls.push new Control 250 375 100 ->
+	# TODO handling is weird
+	mag = 30 / ( ( (@x - it.x)**2 + (@y - it.y)**2 ) >? 30 )
+	it.vx += mag * (@x - it.x) 
+	it.vy += mag * (@y - it.y)
+
+# faders.push new Fader 300 275 [\white]
+
+# mouse handling
+# TODO handle window moving /resizing correctly
+{left, top} = canvas.getBoundingClientRect!
+moving = void
+resizing = void
+canvas.addEventListener \mousedown (e) ->
+	x = e.clientX - left
+	y = e.clientY - top
+	for c of controls
+		if Math.sqrt((c.x - x)**2 + (c.y - y)**2) < 20 # hitbox
+			canvas.style.cursor = \move
+			return moving := c
+		if Math.abs( Math.sqrt((c.x - x)**2 + (c.y - y)**2) - c.radius ) < 5
+			return resizing := c
+	# else
+	canvas.style.cursor = \default
+	moving := void
+	resizing := void
+
+canvas.addEventListener \mousemove (e) ->
+	x = e.clientX - left
+	y = e.clientY - top
+	if moving
+		moving.x = x
+		moving.y = y
+	if resizing
+		resizing.resize Math.sqrt( (resizing.x - x)**2 + (resizing.y - y) ** 2 ) >? 20
+
+canvas.addEventListener \mouseup (e) ->
+	canvas.style.cursor = \default
+	moving := void
+	resizing := void
+
+canvas.addEventListener \mouseout (e) ->
+	canvas.style.cursor = \default
+	moving := void
+	resizing := void
+
+document.getElementById \start .addEventListener \click ->
+
+	setInterval tick, 50
+	# window.mozRequestAnimationFrame tick
+
+
